@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk ATAC-seq QC Metrics</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+            color: #343a40;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .chart-title {
+            font-size: 24px;
+            margin-bottom: 30px;
+        }
+
+        .file-input-wrapper {
+            margin-bottom: 20px;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .upload-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .upload-button:hover {
+            background-color: #0056b3;
+        }
+
+        #metric-select-wrapper {
+            margin-bottom: 30px;
+        }
+
+        #chart-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 20px;
+        }
+
+        .chart {
+            border: 1px solid #ced4da;
+            padding: 20px;
+            background-color: white;
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            padding: 8px;
+            font: 12px Arial, sans-serif;
+            background: lightsteelblue;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            pointer-events: none;
+            visibility: hidden;
+        }
+
+        .metric-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .metric-button.selected {
+            background-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chart-title">Bulk ATAC-seq QC Metrics</div>
+        
+        <div class="file-input-wrapper">
+            <label class="upload-button" for="file-input">Select QC Files</label>
+            <input type="file" id="file-input" accept=".html" multiple>
+        </div>
+
+        <div id="metric-select-wrapper"></div>
+
+        <div id="chart-container"></div>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <script>
+        // Metrics allowed based on green circle indicators from the screenshot
+        const allowedMetrics = [
+            'Total Reads', 'Mapped Reads', '% Mapped Reads', 'Singletons',
+            'NFR / mono-nuc reads', 'Fraction of Reads in blacklist regions', 'Total Fragments', 
+            'Distinct Fragments', 'Positions with Two Read', 'NRF = Distinct/Total', 'PBC1 = OneRead/Distinct',
+            'PBC2 = OneRead/TwoRead', 'Number of peaks', 'TSS enrichment', 'AUC', 'Synthetic AUC', 
+            'X-intercept', 'Synthetic X-intercept', 'Elbow Point', 'Synthetic Elbow Point', 'Synthetic JS Distance',
+            '% Duplicate Reads', 'Properly paired reads', '% Properly paired reads', 'Fraction of Reads in Peaks'
+        ];
+
+        // Event listener for file input
+        document.getElementById("file-input").addEventListener("change", handleFileSelect);
+
+        let qcFiles = [];
+        let selectedMetrics = [];
+
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            qcFiles = [...files];
+
+            if (qcFiles.length === 0) {
+                alert("Please select at least one HTML file.");
+                return;
+            }
+
+            let metricOptions = new Set();
+
+            // Read each file and extract metric options
+            qcFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(e.target.result, "text/html");
+
+                    // Find all QC metrics from the HTML file
+                    const metrics = [...doc.querySelectorAll("th")].map(th => th.innerText.trim());
+                    metrics.forEach(metric => {
+                        if (allowedMetrics.includes(metric)) {
+                            metricOptions.add(metric);
+                        }
+                    });
+
+                    // Populate buttons once all files are processed
+                    if (qcFiles.indexOf(file) === qcFiles.length - 1) {
+                        populateMetricButtons(Array.from(metricOptions));
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function populateMetricButtons(metrics) {
+            const metricSelectWrapper = document.getElementById("metric-select-wrapper");
+            metricSelectWrapper.innerHTML = '';
+            metrics.forEach(metric => {
+                const button = document.createElement("button");
+                button.classList.add("metric-button");
+                button.innerText = metric;
+                button.addEventListener("click", () => {
+                    toggleMetricSelection(button, metric);
+                });
+                metricSelectWrapper.appendChild(button);
+            });
+        }
+
+        function toggleMetricSelection(button, metric) {
+            if (selectedMetrics.includes(metric)) {
+                selectedMetrics = selectedMetrics.filter(m => m !== metric);
+                button.classList.remove("selected");
+            } else if (selectedMetrics.length < 6) {
+                selectedMetrics.push(metric);
+                button.classList.add("selected");
+            } else {
+                alert("You can select up to 6 QC metrics at a time.");
+            }
+            extractAndPlotMetrics(selectedMetrics);
+        }
+
+        function extractMetricValue(doc, metric) {
+            const th = [...doc.querySelectorAll("th")].find(th => th.innerText.trim() === metric);
+            if (th) {
+                const td = th.nextElementSibling;
+                if (td) {
+                    const value = parseFloat(td.innerText.replace(/,/g, ''));
+                    return isNaN(value) ? null : value;
+                }
+            }
+            return null;
+        }
+
+        function extractAndPlotMetrics(metrics) {
+            const dataByMetric = {};
+            metrics.forEach(metric => {
+                dataByMetric[metric] = [];
+            });
+
+            // Process each file to extract the selected metrics
+            qcFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(e.target.result, "text/html");
+
+                    metrics.forEach(metric => {
+                        const metricValue = extractMetricValue(doc, metric);
+                        if (metricValue !== null) {
+                            dataByMetric[metric].push({ sample: file.name, value: metricValue });
+                        }
+                    });
+
+                    // Render charts once all files are processed
+                    if (index === qcFiles.length - 1) {
+                        renderCharts(dataByMetric);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function renderCharts(dataByMetric) {
+            // Clear existing charts
+            d3.select("#chart-container").html("");
+
+            Object.keys(dataByMetric).forEach(metric => {
+                const data = dataByMetric[metric];
+                const margin = { top: 40, right: 30, bottom: 100, left: 70 };
+                const width = 400 - margin.left - margin.right;
+                const height = 300 - margin.top - margin.bottom;
+
+                const svg = d3.select("#chart-container")
+                    .append("div")
+                    .attr("class", "chart")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                const x = d3.scaleBand()
+                    .domain(data.map(d => d.sample))
+                    .range([0, width])
+                    .padding(0.2);
+
+                const y = d3.scaleLinear()
+                    .domain([0, d3.max(data, d => d.value) * 1.1])
+                    .nice()
+                    .range([height, 0]);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.append("g")
+                    .selectAll(".bar")
+                    .data(data)
+                    .enter()
+                    .append("rect")
+                    .attr("class", "bar")
+                    .attr("x", d => x(d.sample))
+                    .attr("y", d => y(d.value))
+                    .attr("width", x.bandwidth())
+                    .attr("height", d => height - y(d.value))
+                    .attr("fill", "#a5cde9")
+                    .on("mouseover", (event, d) => {
+                        tooltip.style("visibility", "visible")
+                               .text(`${d.sample}: ${d.value}`);
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip.style("top", (event.pageY - 10) + "px")
+                               .style("left", (event.pageX + 10) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.style("visibility", "hidden");
+                    });
+
+                // X Axis
+                svg.append("g")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end")
+                    .style("font-family", "Arial, sans-serif")
+                    .style("font-size", "10px");
+
+                // Y Axis
+                const yAxis = d3.axisLeft(y).tickFormat(d => {
+                    return d >= 1000000 ? `${d / 1000000}M` : d;
+                });
+
+                svg.append("g")
+                    .call(yAxis)
+                    .selectAll("text")
+                    .style("font-family", "Arial, sans-serif")
+                    .style("font-size", "10px");
+
+                // Y Axis label
+                svg.append("text")
+                    .attr("text-anchor", "middle")
+                    .attr("transform", `translate(${-margin.left / 1.5},${height / 2})rotate(-90)`)
+                    .text(metric)
+                    .style("font-family", "Arial, sans-serif")
+                    .style("font-size", "12px");
+
+                // Chart title
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", -20)
+                    .attr("text-anchor", "middle")
+                    .text(`Bulk ATAC-seq QC Metric: ${metric}`)
+                    .style("font-family", "Arial, sans-serif")
+                    .style("font-size", "14px")
+                    .style("font-weight", "bold");
+            });
+        }
+    </script>
+</body>
+</html>
