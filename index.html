@@ -1,325 +1,169 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk ATAC-seq QC Metrics</title>
-    <script src="https://d3js.org/d3.v6.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #343a40;
-            text-align: center;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .chart-title {
-            font-size: 24px;
-            margin-bottom: 30px;
-        }
-
-        .file-input-wrapper {
-            margin-bottom: 20px;
-        }
-
-        #file-input {
-            display: none;
-        }
-
-        .upload-button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        .upload-button:hover {
-            background-color: #0056b3;
-        }
-
-        #metric-select-wrapper {
-            margin-bottom: 30px;
-        }
-
-        #chart-container {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 20px;
-        }
-
-        .chart {
-            border: 1px solid #ced4da;
-            padding: 20px;
-            background-color: white;
-        }
-
-        .tooltip {
-            position: absolute;
-            text-align: center;
-            padding: 8px;
-            font: 12px Arial, sans-serif;
-            background: lightsteelblue;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            pointer-events: none;
-            visibility: hidden;
-        }
-
-        .metric-button {
-            background-color: #6c757d;
-            color: white;
-            border: none;
-            padding: 10px;
-            margin: 5px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .metric-button.selected {
-            background-color: #007bff;
-        }
-    </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATAC-QC | MultiQC Explorer</title>
+<style>
+:root{--ink:#19283c;--muted:#62748c;--blue:#3665e7;--line:#dce4ef;--bg:#f5f7fb;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#10233c;color:#fff;padding:28px max(24px,calc((100% - 1420px)/2));display:flex;justify-content:space-between;gap:20px;align-items:center}
+h1{margin:0;font-size:27px;letter-spacing:-.7px}h2{font-size:17px;margin:0 0 16px}header p{color:#c5d3e5;margin:4px 0 0}.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9eb8e9}
+main{max-width:1460px;margin:auto;padding:28px 24px}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 3px 18px #162b4810;margin-bottom:20px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between}.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button,.upload{font:inherit;border:1px solid var(--line);padding:9px 14px;border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
+button:hover,.upload:hover{border-color:var(--blue);color:var(--blue)}button.primary,.upload.primary{background:var(--blue);color:white;border-color:var(--blue)}button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{display:none}select,input[type=text]{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:inherit}
+.drop{border:2px dashed #b4c8ed;border-radius:12px;background:#f8fbff;text-align:center;padding:25px;margin-top:16px;cursor:pointer}
+.drop.drag{background:#eaf2ff;border-color:var(--blue)}.drop strong{display:block;font-size:17px}
+.muted{color:var(--muted)}.small{font-size:12px}.status{margin-top:12px;white-space:pre-wrap}
+.metric-list{display:flex;flex-wrap:wrap;gap:8px}.chip{border-radius:18px;padding:7px 12px;font-size:12px}.chip.active{background:#e8efff;color:#244cb8;border-color:#7597ee;font-weight:650}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.chart{min-width:0;border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+.chart h3{font-size:14px;margin:0 0 12px}.plot{overflow-x:auto}.plot svg{display:block;width:100%;min-width:490px;height:auto}
+.table-scroll{overflow:auto;max-height:520px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:white}th{background:#f3f6fb;color:#4c5c74;position:sticky;top:0;cursor:pointer}th:first-child{z-index:2}
+.summary{display:flex;gap:26px;flex-wrap:wrap}.stat strong{display:block;font-size:25px}.stat span{color:var(--muted);font-size:12px}
+footer{color:var(--muted);font-size:12px;padding:10px 0 30px}
+@media(max-width:950px){.grid{grid-template-columns:1fr}header{padding:24px}main{padding:20px 14px}}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="chart-title">Bulk ATAC-seq QC Metrics</div>
-        
-        <div class="file-input-wrapper">
-            <label class="upload-button" for="file-input">Select QC Files</label>
-            <input type="file" id="file-input" accept=".html" multiple>
-        </div>
-
-        <div id="metric-select-wrapper"></div>
-
-        <div id="chart-container"></div>
-        <div class="tooltip" id="tooltip"></div>
-    </div>
-
-    <script>
-        // Metrics allowed based on green circle indicators from the screenshot
-        const allowedMetrics = [
-            'Total Reads', 'Mapped Reads', '% Mapped Reads', 'Singletons',
-            'NFR / mono-nuc reads', 'Fraction of Reads in blacklist regions', 'Total Fragments', 
-            'Distinct Fragments', 'Positions with Two Read', 'NRF = Distinct/Total', 'PBC1 = OneRead/Distinct',
-            'PBC2 = OneRead/TwoRead', 'Number of peaks', 'TSS enrichment', 'AUC', 'Synthetic AUC', 
-            'X-intercept', 'Synthetic X-intercept', 'Elbow Point', 'Synthetic Elbow Point', 'Synthetic JS Distance',
-            '% Duplicate Reads', 'Properly paired reads', '% Properly paired reads', 'Fraction of Reads in Peaks'
-        ];
-
-        // Event listener for file input
-        document.getElementById("file-input").addEventListener("change", handleFileSelect);
-
-        let qcFiles = [];
-        let selectedMetrics = [];
-
-        function handleFileSelect(event) {
-            const files = event.target.files;
-            qcFiles = [...files];
-
-            if (qcFiles.length === 0) {
-                alert("Please select at least one HTML file.");
-                return;
-            }
-
-            let metricOptions = new Set();
-
-            // Read each file and extract metric options
-            qcFiles.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(e.target.result, "text/html");
-
-                    // Find all QC metrics from the HTML file
-                    const metrics = [...doc.querySelectorAll("th")].map(th => th.innerText.trim());
-                    metrics.forEach(metric => {
-                        if (allowedMetrics.includes(metric)) {
-                            metricOptions.add(metric);
-                        }
-                    });
-
-                    // Populate buttons once all files are processed
-                    if (qcFiles.indexOf(file) === qcFiles.length - 1) {
-                        populateMetricButtons(Array.from(metricOptions));
-                    }
-                };
-                reader.readAsText(file);
-            });
-        }
-
-        function populateMetricButtons(metrics) {
-            const metricSelectWrapper = document.getElementById("metric-select-wrapper");
-            metricSelectWrapper.innerHTML = '';
-            metrics.forEach(metric => {
-                const button = document.createElement("button");
-                button.classList.add("metric-button");
-                button.innerText = metric;
-                button.addEventListener("click", () => {
-                    toggleMetricSelection(button, metric);
-                });
-                metricSelectWrapper.appendChild(button);
-            });
-        }
-
-        function toggleMetricSelection(button, metric) {
-            if (selectedMetrics.includes(metric)) {
-                selectedMetrics = selectedMetrics.filter(m => m !== metric);
-                button.classList.remove("selected");
-            } else if (selectedMetrics.length < 6) {
-                selectedMetrics.push(metric);
-                button.classList.add("selected");
-            } else {
-                alert("You can select up to 6 QC metrics at a time.");
-            }
-            extractAndPlotMetrics(selectedMetrics);
-        }
-
-        function extractMetricValue(doc, metric) {
-            const th = [...doc.querySelectorAll("th")].find(th => th.innerText.trim() === metric);
-            if (th) {
-                const td = th.nextElementSibling;
-                if (td) {
-                    const value = parseFloat(td.innerText.replace(/,/g, ''));
-                    return isNaN(value) ? null : value;
-                }
-            }
-            return null;
-        }
-
-        function extractAndPlotMetrics(metrics) {
-            const dataByMetric = {};
-            metrics.forEach(metric => {
-                dataByMetric[metric] = [];
-            });
-
-            // Process each file to extract the selected metrics
-            qcFiles.forEach((file, index) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(e.target.result, "text/html");
-
-                    metrics.forEach(metric => {
-                        const metricValue = extractMetricValue(doc, metric);
-                        if (metricValue !== null) {
-                            dataByMetric[metric].push({ sample: file.name, value: metricValue });
-                        }
-                    });
-
-                    // Render charts once all files are processed
-                    if (index === qcFiles.length - 1) {
-                        renderCharts(dataByMetric);
-                    }
-                };
-                reader.readAsText(file);
-            });
-        }
-
-        function renderCharts(dataByMetric) {
-            // Clear existing charts
-            d3.select("#chart-container").html("");
-
-            Object.keys(dataByMetric).forEach(metric => {
-                const data = dataByMetric[metric];
-                const margin = { top: 40, right: 30, bottom: 100, left: 70 };
-                const width = 400 - margin.left - margin.right;
-                const height = 300 - margin.top - margin.bottom;
-
-                const svg = d3.select("#chart-container")
-                    .append("div")
-                    .attr("class", "chart")
-                    .append("svg")
-                    .attr("width", width + margin.left + margin.right)
-                    .attr("height", height + margin.top + margin.bottom)
-                    .append("g")
-                    .attr("transform", `translate(${margin.left},${margin.top})`);
-
-                const x = d3.scaleBand()
-                    .domain(data.map(d => d.sample))
-                    .range([0, width])
-                    .padding(0.2);
-
-                const y = d3.scaleLinear()
-                    .domain([0, d3.max(data, d => d.value) * 1.1])
-                    .nice()
-                    .range([height, 0]);
-
-                const tooltip = d3.select("#tooltip");
-
-                svg.append("g")
-                    .selectAll(".bar")
-                    .data(data)
-                    .enter()
-                    .append("rect")
-                    .attr("class", "bar")
-                    .attr("x", d => x(d.sample))
-                    .attr("y", d => y(d.value))
-                    .attr("width", x.bandwidth())
-                    .attr("height", d => height - y(d.value))
-                    .attr("fill", "#a5cde9")
-                    .on("mouseover", (event, d) => {
-                        tooltip.style("visibility", "visible")
-                               .text(`${d.sample}: ${d.value}`);
-                    })
-                    .on("mousemove", (event) => {
-                        tooltip.style("top", (event.pageY - 10) + "px")
-                               .style("left", (event.pageX + 10) + "px");
-                    })
-                    .on("mouseout", () => {
-                        tooltip.style("visibility", "hidden");
-                    });
-
-                // X Axis
-                svg.append("g")
-                    .attr("transform", `translate(0,${height})`)
-                    .call(d3.axisBottom(x))
-                    .selectAll("text")
-                    .attr("transform", "rotate(-45)")
-                    .style("text-anchor", "end")
-                    .style("font-family", "Arial, sans-serif")
-                    .style("font-size", "10px");
-
-                // Y Axis
-                const yAxis = d3.axisLeft(y).tickFormat(d => {
-                    return d >= 1000000 ? `${d / 1000000}M` : d;
-                });
-
-                svg.append("g")
-                    .call(yAxis)
-                    .selectAll("text")
-                    .style("font-family", "Arial, sans-serif")
-                    .style("font-size", "10px");
-
-                // Y Axis label
-                svg.append("text")
-                    .attr("text-anchor", "middle")
-                    .attr("transform", `translate(${-margin.left / 1.5},${height / 2})rotate(-90)`)
-                    .text(metric)
-                    .style("font-family", "Arial, sans-serif")
-                    .style("font-size", "12px");
-
-                // Chart title
-                svg.append("text")
-                    .attr("x", width / 2)
-                    .attr("y", -20)
-                    .attr("text-anchor", "middle")
-                    .text(`Bulk ATAC-seq QC Metric: ${metric}`)
-                    .style("font-family", "Arial, sans-serif")
-                    .style("font-size", "14px")
-                    .style("font-weight", "bold");
-            });
-        }
-    </script>
-</body>
-</html>
+<header><div><div class="eyebrow">Orouji Lab · Analysis tools</div><h1>ATAC-QC Explorer</h1><p>Compare sequencing QC metrics across MultiQC reports</p></div><div class="small">Local analysis</div></header>
+<main>
+<section class="panel">
+<div class="row"><div><h2>Load reports</h2><div class="muted small">Select MultiQC HTML reports to compare samples and QC metrics.</div></div><div class="controls"><label class="upload primary" for="files">Select files</label><input type="file" id="files" accept=".html,.htm" multiple><button id="clear">Clear all</button></div></div>
+<div class="drop" id="drop" role="button" tabindex="0"><strong>Drop HTML reports here</strong><span class="muted">Files are read locally and are not uploaded.</span></div>
+<div id="status" class="status muted small" aria-live="polite">No files loaded.</div>
+</section>
+<section class="panel" id="dashboard" hidden>
+<div class="row"><div><h2>Overview</h2><div class="summary"><div class="stat"><strong id="nSamples">0</strong><span>Samples</span></div><div class="stat"><strong id="nMetrics">0</strong><span>Metrics detected</span></div><div class="stat"><strong id="nReports">0</strong><span>Reports</span></div></div></div><div class="controls"><button id="csv">Export data CSV</button><button id="all">Select all metrics</button><button id="none">Clear selection</button></div></div>
+</section>
+<section class="panel" id="filters" hidden>
+<div class="row"><div><h2>QC metrics</h2><div class="muted small">Choose the metrics to plot. Hover over a bar to see its value.</div></div><div class="controls"><label>Sort samples <select id="sort"><option value="name">By name</option><option value="value-desc">By value ↓</option><option value="value-asc">By value ↑</option></select></label><label>Find sample <input type="text" id="search" placeholder="Filter sample names"></label><button id="svgAll">Export charts SVG</button></div></div>
+<div class="metric-list" id="metrics" style="margin-top:16px"></div>
+</section>
+<div class="grid" id="charts"></div>
+<section class="panel" id="tablePanel" hidden><h2>QC summary table</h2><p class="muted small">Missing values are shown as —. Click a column header to sort.</p><div class="table-scroll"><table id="matrix"></table></div></section>
+<footer>ATAC-QC · Values are read from MultiQC HTML tables. Check metric definitions and units before comparing runs.</footer>
+</main>
+<script>
+"use strict";
+const allowed=[
+"Total Reads","Mapped Reads","% Mapped Reads","Singletons","NFR / mono-nuc reads","Fraction of Reads in blacklist regions","Total Fragments",
+"Distinct Fragments","Positions with Two Read","NRF = Distinct/Total","PBC1 = OneRead/Distinct","PBC2 = OneRead/TwoRead",
+"Number of peaks","TSS enrichment","AUC","Synthetic AUC","X-intercept","Synthetic X-intercept","Elbow Point",
+"Synthetic Elbow Point","Synthetic JS Distance","% Duplicate Reads","Properly paired reads","% Properly paired reads","Fraction of Reads in Peaks"];
+const aliases={
+"total reads":["total reads","total sequences","reads"],
+"mapped reads":["mapped reads","reads mapped","mapped"],
+"% mapped reads":["% mapped reads","% reads mapped","mapped reads (%)","% mapped"],
+"number of peaks":["number of peaks","peaks","peak count"],
+"tss enrichment":["tss enrichment","tss_enrichment","tss enrichment score"],
+"fraction of reads in peaks":["fraction of reads in peaks","frip","fraction of reads in peaks (frip)"],
+"% duplicate reads":["% duplicate reads","duplicates (%)","duplicate reads (%)","duplication"],
+"properly paired reads":["properly paired reads","properly paired"],
+"% properly paired reads":["% properly paired reads","% proper pairs"],
+"total fragments":["total fragments"],
+"distinct fragments":["distinct fragments"]
+};
+const state={rows:[],selected:new Set(),reports:[],warnings:[],sort:"name",filter:"",tableSort:"sample",tableDescending:false};
+const $=id=>document.getElementById(id);
+const clean=s=>String(s||"").replace(/\s+/g," ").replace(/[↑↓↕ⓘ]/g,"").trim();
+const norm=s=>clean(s).toLowerCase().replace(/[%]/g,"percent").replace(/[^a-z0-9]+/g," ").trim();
+function canonical(s){const n=norm(s);for(const metric of allowed){if(norm(metric)===n||((aliases[metric.toLowerCase()]||[]).some(a=>norm(a)===n)))return metric}return null}
+function number(s){
+s=clean(s);if(!s||/^(?:na|n\/a|null|—|-|nan)$/i.test(s))return null;
+const m=s.match(/^([+-]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[+-]?\d+)?)(?:\s*([kKmMgGtT])(?:b|bp)?)?(?:\s*%)?/i);
+if(!m)return null;
+const scale={k:1e3,m:1e6,g:1e9,t:1e12};
+const value=Number(m[1].replace(/,/g,""))*(m[2]?scale[m[2].toLowerCase()]:1);
+return Number.isFinite(value)?value:null;
+}
+function nameFrom(file){return file.replace(/\.html?$/i,"").replace(/^multiqc[_-]?/i,"")||file}
+function safeName(s){return clean(s)||"Unnamed sample"}
+function parseReport(html,filename){
+const doc=new DOMParser().parseFromString(html,"text/html");
+const found=new Map();
+function add(sample,metric,value){if(value===null)return;const key=safeName(sample);if(!found.has(key))found.set(key,{});found.get(key)[metric]=value}
+for(const table of doc.querySelectorAll("table")){
+if(/configModal|versions|software/i.test(table.id||""))continue;
+const trs=[...table.querySelectorAll("tr")];if(!trs.length)continue;
+const head=trs.find(tr=>tr.querySelector("th"))||trs[0];
+const headers=[...head.children].filter(el=>/^(TH|TD)$/.test(el.tagName)).map(el=>clean(el.textContent));
+if(!headers.length)continue;
+const matches=headers.map(canonical);
+const ix=0;
+if(matches.some(Boolean)&&/sample/i.test(headers[0])){
+for(const tr of trs.slice(trs.indexOf(head)+1)){
+const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));
+if(cells.length<2)continue;
+const sample=safeName(cells[ix]?.textContent)||nameFrom(filename);
+matches.forEach((metric,i)=>{if(metric&&cells[i])add(sample,metric,number(cells[i].textContent))});
+}
+} else if(headers.length===2){
+for(const tr of trs){
+const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));
+if(cells.length!==2)continue;
+const metric=canonical(cells[0].textContent);
+if(metric)add(nameFrom(filename),metric,number(cells[1].textContent));
+}
+}
+}
+return [...found.entries()].filter(([sample,metrics])=>Object.keys(metrics).length).map(([sample,metrics])=>({sample,metrics,report:filename}));
+}
+async function importFiles(files){
+const chosen=[...files].filter(f=>/\.html?$/i.test(f.name));if(!chosen.length){$("status").textContent="Please select HTML files (.html or .htm).";return}
+const loaded=await Promise.all(chosen.map(async file=>{try{return{file:file.name,rows:parseReport(await file.text(),file.name)}}catch(e){return{file:file.name,rows:[],error:e.message}}}));
+state.rows=[];state.warnings=[];state.reports=loaded.map(v=>v.file);
+const names=new Set();
+loaded.forEach(result=>{if(result.error)state.warnings.push(result.file+": "+result.error);if(!result.rows.length)state.warnings.push(result.file+": No recognized QC metrics found.");result.rows.forEach(row=>{let name=row.sample;if(names.has(name)){name=row.report.replace(/\.html?$/i,"")+" / "+name}let i=2,unique=name;while(names.has(unique))unique=name+" ("+(i++)+")";names.add(unique);state.rows.push({...row,sample:unique})})});
+state.selected.clear();available().slice(0,6).forEach(m=>state.selected.add(m));refresh();
+}
+function available(){return allowed.filter(m=>state.rows.some(row=>row.metrics[m]!==undefined))}
+function filtered(){return state.rows.filter(r=>r.sample.toLowerCase().includes(state.filter.toLowerCase()))}
+function fmt(v){return v==null?"—":new Intl.NumberFormat("en-US",{maximumFractionDigits:3}).format(v)}
+function refresh(){
+$("dashboard").hidden=$("filters").hidden=$("tablePanel").hidden=!state.rows.length;
+$("nSamples").textContent=state.rows.length;$("nReports").textContent=state.reports.length;$("nMetrics").textContent=available().length;
+$("status").textContent=state.reports.length+" report(s) imported · "+state.rows.length+" sample(s) extracted."+(state.warnings.length?"\nWarnings:\n"+state.warnings.join("\n"):"");
+const list=$("metrics");list.replaceChildren();
+available().forEach(metric=>{const b=document.createElement("button");b.className="chip"+(state.selected.has(metric)?" active":"");b.textContent=metric;b.setAttribute("aria-pressed",String(state.selected.has(metric)));b.onclick=()=>{state.selected.has(metric)?state.selected.delete(metric):state.selected.add(metric);refresh()};list.append(b)});
+renderCharts();renderTable();
+}
+function svgElement(tag,attributes={},value){const e=document.createElementNS("http://www.w3.org/2000/svg",tag);Object.entries(attributes).forEach(([k,v])=>e.setAttribute(k,String(v)));if(value!==undefined)e.textContent=value;return e}
+function renderCharts(){
+const target=$("charts");target.replaceChildren();for(const metric of state.selected){
+const samples=filtered().filter(r=>Number.isFinite(r.metrics[metric])).slice();if(state.sort==="name")samples.sort((a,b)=>a.sample.localeCompare(b.sample));else samples.sort((a,b)=>state.sort==="value-desc"?b.metrics[metric]-a.metrics[metric]:a.metrics[metric]-b.metrics[metric]);
+const card=document.createElement("article");card.className="chart";const top=document.createElement("div");top.className="row";
+const title=document.createElement("h3");title.textContent=metric;const save=document.createElement("button");save.className="small";save.textContent="Export SVG";top.append(title,save);card.append(top);
+if(!samples.length){const p=document.createElement("p");p.className="muted";p.textContent="No values for the current sample filter.";card.append(p);target.append(card);continue}
+const width=Math.max(500,Math.min(1400,samples.length*44+110)),height=310,left=76,right=22,topMargin=22,bottom=105,plotW=width-left-right,plotH=height-topMargin-bottom;
+const svg=svgElement("svg",{viewBox:"0 0 "+width+" "+height,role:"img","aria-label":metric+" bar chart"});
+const max=Math.max(...samples.map(x=>x.metrics[metric]),0),min=Math.min(...samples.map(x=>x.metrics[metric]),0),upper=max===min?max+1:max*1.08;
+const scale=v=>topMargin+plotH-(v-min)/(upper-min)*plotH;
+for(let t=0;t<=4;t++){const value=min+(upper-min)*t/4,y=scale(value);svg.append(svgElement("line",{x1:left,y1:y,x2:width-right,y2:y,stroke:"#e7edf5"}));svg.append(svgElement("text",{x:left-9,y:y+4,"text-anchor":"end","font-size":11,fill:"#65788f"},fmt(value)))}
+const step=plotW/samples.length,barWidth=Math.max(2,Math.min(32,step*.72));
+samples.forEach((d,i)=>{const x=left+i*step+(step-barWidth)/2,val=d.metrics[metric],y=Math.min(scale(val),scale(0)),h=Math.max(1,Math.abs(scale(val)-scale(0)));
+const rect=svgElement("rect",{x,y,width:barWidth,height:h,rx:2,fill:"#4777d5"});rect.append(svgElement("title",{},d.sample+": "+fmt(val)));svg.append(rect);
+const label=svgElement("text",{x:x+barWidth/2,y:height-91,transform:"rotate(-48 "+(x+barWidth/2)+" "+(height-91)+")","text-anchor":"end","font-size":10,fill:"#55677e"},d.sample.length>30?d.sample.slice(0,28)+"…":d.sample);svg.append(label)});
+svg.append(svgElement("line",{x1:left,y1:scale(0),x2:width-right,y2:scale(0),stroke:"#73859b"}));
+const holder=document.createElement("div");holder.className="plot";holder.append(svg);card.append(holder);target.append(card);
+save.onclick=()=>downloadSVG(svg,metric);
+}}
+function downloadBlob(blob,filename){const a=document.createElement("a"),url=URL.createObjectURL(blob);a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function downloadSVG(svg,name){const clone=svg.cloneNode(true);clone.setAttribute("xmlns","http://www.w3.org/2000/svg");downloadBlob(new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml;charset=utf-8"}),name.toLowerCase().replace(/[^a-z0-9]+/g,"-")+".svg")}
+function renderTable(){const metrics=available(),table=$("matrix");table.replaceChildren();
+const thead=document.createElement("thead"),tr=document.createElement("tr");["Sample",...metrics].forEach((m,i)=>{const th=document.createElement("th");th.textContent=m;th.onclick=()=>{state.tableDescending=state.tableSort===m?!state.tableDescending:false;state.tableSort=m;renderTable()};tr.append(th)});thead.append(tr);table.append(thead);
+const tbody=document.createElement("tbody"),rows=filtered().slice();rows.sort((a,b)=>{const col=state.tableSort;let delta=col==="Sample"||col==="sample"?a.sample.localeCompare(b.sample):(a.metrics[col]??-Infinity)-(b.metrics[col]??-Infinity);return state.tableDescending?-delta:delta});
+for(const row of rows){const line=document.createElement("tr");[row.sample,...metrics.map(m=>fmt(row.metrics[m]))].forEach(value=>{const td=document.createElement("td");td.textContent=value;line.append(td)});tbody.append(line)}table.append(tbody)}
+function csvCell(v){const s=String(v??"");return '"'+s.replace(/"/g,'""')+'"'}
+$("files").addEventListener("change",e=>{importFiles(e.target.files);e.target.value=""});
+const drop=$("drop");drop.onclick=()=>$("files").click();drop.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("files").click()}};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("drag")};drop.ondragleave=()=>drop.classList.remove("drag");drop.ondrop=e=>{e.preventDefault();drop.classList.remove("drag");importFiles(e.dataTransfer.files)};
+$("clear").onclick=()=>{state.rows=[];state.reports=[];state.warnings=[];state.selected.clear();refresh();$("status").textContent="No files loaded."};
+$("sort").onchange=e=>{state.sort=e.target.value;renderCharts()};
+$("search").oninput=e=>{state.filter=e.target.value;renderCharts();renderTable()};
+$("none").onclick=()=>{state.selected.clear();refresh()};
+$("all").onclick=()=>{state.selected=new Set(available());refresh()};
+$("csv").onclick=()=>{const metrics=available(),data=[["Sample","Report",...metrics],...filtered().map(r=>[r.sample,r.report,...metrics.map(m=>r.metrics[m]??"")])];downloadBlob(new Blob([data.map(r=>r.map(csvCell).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"}),"atac-qc-metrics.csv")};
+$("svgAll").onclick=()=>{document.querySelectorAll(".chart").forEach(c=>{const svg=c.querySelector("svg"),heading=c.querySelector("h3");if(svg)downloadSVG(svg,heading.textContent)})};
+</script>
+</body></html>
