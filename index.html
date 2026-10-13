@@ -26,23 +26,23 @@ footer{color:var(--muted);font-size:12px;padding:10px 0 30px}
 </style>
 </head>
 <body>
-<header><div><div class="eyebrow">Orouji Lab · Analysis tools</div><h1>ATAC-QC Explorer</h1><p>Rapid sample-level quality control from MultiQC reports</p></div><div class="small">Runs locally in your browser · No server upload</div></header>
+<header><div><div class="eyebrow">Orouji Lab · Analysis tools</div><h1>ATAC-QC Explorer</h1><p>Compare sequencing QC metrics across MultiQC reports</p></div><div class="small">Local analysis</div></header>
 <main>
 <section class="panel">
-<div class="row"><div><h2>Import MultiQC results</h2><div class="muted small">Select one or more MultiQC HTML files. Each report may contain multiple samples.</div></div><div class="controls"><label class="upload primary" for="files">Choose HTML reports</label><input type="file" id="files" accept=".html,.htm" multiple><button id="clear">Clear all</button></div></div>
-<div class="drop" id="drop" role="button" tabindex="0"><strong>Drop MultiQC HTML reports here</strong><span class="muted">or choose files above · processed entirely on your device</span></div>
+<div class="row"><div><h2>Load reports</h2><div class="muted small">Select MultiQC HTML reports to compare samples and QC metrics.</div></div><div class="controls"><label class="upload primary" for="files">Select files</label><input type="file" id="files" accept=".html,.htm" multiple><button id="clear">Clear all</button></div></div>
+<div class="drop" id="drop" role="button" tabindex="0"><strong>Drop HTML reports here</strong><span class="muted">Files are read locally and are not uploaded.</span></div>
 <div id="status" class="status muted small" aria-live="polite">No files loaded.</div>
 </section>
 <section class="panel" id="dashboard" hidden>
-<div class="row"><div><h2>Dataset overview</h2><div class="summary"><div class="stat"><strong id="nSamples">0</strong><span>Samples</span></div><div class="stat"><strong id="nMetrics">0</strong><span>Metrics detected</span></div><div class="stat"><strong id="nReports">0</strong><span>Reports</span></div></div></div><div class="controls"><button id="csv">Export data CSV</button><button id="all">Select all metrics</button><button id="none">Clear selection</button></div></div>
+<div class="row"><div><h2>Overview</h2><div class="summary"><div class="stat"><strong id="nSamples">0</strong><span>Samples</span></div><div class="stat"><strong id="nMetrics">0</strong><span>Metrics detected</span></div><div class="stat"><strong id="nReports">0</strong><span>Reports</span></div></div></div><div class="controls"><button id="csv">Export data CSV</button><button id="all">Select all metrics</button><button id="none">Clear selection</button></div></div>
 </section>
 <section class="panel" id="filters" hidden>
-<div class="row"><div><h2>Metrics and display</h2><div class="muted small">Select metrics to compare across samples; hover bars for exact values.</div></div><div class="controls"><label>Sort samples <select id="sort"><option value="name">By name</option><option value="value-desc">By value ↓</option><option value="value-asc">By value ↑</option></select></label><label>Find sample <input type="text" id="search" placeholder="Filter sample names"></label><button id="svgAll">Export charts SVG</button></div></div>
+<div class="row"><div><h2>QC metrics</h2><div class="muted small">Choose the metrics to plot. Hover over a bar to see its value.</div></div><div class="controls"><label>Sort samples <select id="sort"><option value="name">By name</option><option value="value-desc">By value ↓</option><option value="value-asc">By value ↑</option></select></label><label>Find sample <input type="text" id="search" placeholder="Filter sample names"></label><button id="svgAll">Export charts SVG</button></div></div>
 <div class="metric-list" id="metrics" style="margin-top:16px"></div>
 </section>
 <div class="grid" id="charts"></div>
-<section class="panel" id="tablePanel" hidden><h2>Sample QC matrix</h2><p class="muted small">— means the value was not present in the imported report. Click a column heading to sort.</p><div class="table-scroll"><table id="matrix"></table></div></section>
-<footer>ATAC-QC Explorer · Values are extracted from HTML tables; always verify metric definitions and consistency across MultiQC versions and contributing tools before comparing batches. An explicit MultiQC data export (JSON/TSV) is preferable for automated pipelines.</footer>
+<section class="panel" id="tablePanel" hidden><h2>QC summary table</h2><p class="muted small">Missing values are shown as —. Click a column header to sort.</p><div class="table-scroll"><table id="matrix"></table></div></section>
+<footer>ATAC-QC · Values are read from MultiQC HTML tables. Check metric definitions and units before comparing runs.</footer>
 </main>
 <script>
 "use strict";
@@ -53,14 +53,14 @@ const allowed=[
 "Synthetic Elbow Point","Synthetic JS Distance","% Duplicate Reads","Properly paired reads","% Properly paired reads","Fraction of Reads in Peaks"];
 const aliases={
 "total reads":["total reads","total sequences","reads"],
-"mapped reads":["mapped reads","reads mapped"],
-"% mapped reads":["% mapped reads","% reads mapped","mapped reads (%)"],
+"mapped reads":["mapped reads","reads mapped","mapped"],
+"% mapped reads":["% mapped reads","% reads mapped","mapped reads (%)","% mapped"],
 "number of peaks":["number of peaks","peaks","peak count"],
 "tss enrichment":["tss enrichment","tss_enrichment","tss enrichment score"],
 "fraction of reads in peaks":["fraction of reads in peaks","frip","fraction of reads in peaks (frip)"],
-"% duplicate reads":["% duplicate reads","duplicates (%)","duplicate reads (%)"],
-"properly paired reads":["properly paired reads"],
-"% properly paired reads":["% properly paired reads"],
+"% duplicate reads":["% duplicate reads","duplicates (%)","duplicate reads (%)","duplication"],
+"properly paired reads":["properly paired reads","properly paired"],
+"% properly paired reads":["% properly paired reads","% proper pairs"],
 "total fragments":["total fragments"],
 "distinct fragments":["distinct fragments"]
 };
@@ -69,29 +69,45 @@ const $=id=>document.getElementById(id);
 const clean=s=>String(s||"").replace(/\s+/g," ").replace(/[↑↓↕ⓘ]/g,"").trim();
 const norm=s=>clean(s).toLowerCase().replace(/[%]/g,"percent").replace(/[^a-z0-9]+/g," ").trim();
 function canonical(s){const n=norm(s);for(const metric of allowed){if(norm(metric)===n||((aliases[metric.toLowerCase()]||[]).some(a=>norm(a)===n)))return metric}return null}
-function number(s){s=clean(s);if(!s||/^(?:na|n\/a|null|—|-|nan)$/i.test(s))return null;const m=s.match(/^[+-]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);if(!m)return null;const val=Number(m[0].replace(/,/g,""));return Number.isFinite(val)?val:null}
+function number(s){
+s=clean(s);if(!s||/^(?:na|n\/a|null|—|-|nan)$/i.test(s))return null;
+const m=s.match(/^([+-]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[+-]?\d+)?)(?:\s*([kKmMgGtT])(?:b|bp)?)?(?:\s*%)?/i);
+if(!m)return null;
+const scale={k:1e3,m:1e6,g:1e9,t:1e12};
+const value=Number(m[1].replace(/,/g,""))*(m[2]?scale[m[2].toLowerCase()]:1);
+return Number.isFinite(value)?value:null;
+}
 function nameFrom(file){return file.replace(/\.html?$/i,"").replace(/^multiqc[_-]?/i,"")||file}
 function safeName(s){return clean(s)||"Unnamed sample"}
 function parseReport(html,filename){
-const doc=new DOMParser().parseFromString(html,"text/html");const found=new Map();
+const doc=new DOMParser().parseFromString(html,"text/html");
+const found=new Map();
 function add(sample,metric,value){if(value===null)return;const key=safeName(sample);if(!found.has(key))found.set(key,{});found.get(key)[metric]=value}
 for(const table of doc.querySelectorAll("table")){
+if(/configModal|versions|software/i.test(table.id||""))continue;
 const trs=[...table.querySelectorAll("tr")];if(!trs.length)continue;
 const head=trs.find(tr=>tr.querySelector("th"))||trs[0];
 const headers=[...head.children].filter(el=>/^(TH|TD)$/.test(el.tagName)).map(el=>clean(el.textContent));
+if(!headers.length)continue;
 const matches=headers.map(canonical);
-if(matches.some(Boolean)){
-const ix=head.cells?head.cells[0].cellIndex:0;
-for(const tr of trs.slice(trs.indexOf(head)+1)){const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));if(cells.length<2)continue;
+const ix=0;
+if(matches.some(Boolean)&&/sample/i.test(headers[0])){
+for(const tr of trs.slice(trs.indexOf(head)+1)){
+const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));
+if(cells.length<2)continue;
 const sample=safeName(cells[ix]?.textContent)||nameFrom(filename);
-matches.forEach((metric,i)=>{if(metric&&cells[i])add(sample,metric,number(cells[i].textContent))})}
+matches.forEach((metric,i)=>{if(metric&&cells[i])add(sample,metric,number(cells[i].textContent))});
 }
-// Simple two-column layout: metric header + adjacent numeric value
-for(const tr of trs){const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));for(let i=0;i<cells.length-1;i++){const metric=canonical(cells[i].textContent);if(metric)add(nameFrom(filename),metric,number(cells[i+1].textContent))}}
+} else if(headers.length===2){
+for(const tr of trs){
+const cells=[...tr.children].filter(el=>/^(TH|TD)$/.test(el.tagName));
+if(cells.length!==2)continue;
+const metric=canonical(cells[0].textContent);
+if(metric)add(nameFrom(filename),metric,number(cells[1].textContent));
 }
-// Allow standalone th/td metric-value layout
-for(const th of doc.querySelectorAll("th")){const metric=canonical(th.textContent);if(metric&&th.nextElementSibling&&th.nextElementSibling.tagName==="TD")add(nameFrom(filename),metric,number(th.nextElementSibling.textContent))}
-return [...found.entries()].filter(([name,metrics])=>Object.keys(metrics).length).map(([sample,metrics])=>({sample,metrics,report:filename}));
+}
+}
+return [...found.entries()].filter(([sample,metrics])=>Object.keys(metrics).length).map(([sample,metrics])=>({sample,metrics,report:filename}));
 }
 async function importFiles(files){
 const chosen=[...files].filter(f=>/\.html?$/i.test(f.name));if(!chosen.length){$("status").textContent="Please select HTML files (.html or .htm).";return}
