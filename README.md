@@ -1,5 +1,7 @@
 # ATAC-QC
 
+**Live viewer:** https://oroujilab.github.io/ATAC-QC/
+
 A lightweight, browser-based tool for comparing quality-control (QC) metrics across bulk ATAC-seq samples.
 
 The viewer reads QC metrics from selected HTML reports and displays interactive bar charts to help assess sample-level data quality. Supported metrics include read mapping, duplication, library complexity (NRF/PBC), FRiP, TSS enrichment, peak counts, and other reported QC measures.
